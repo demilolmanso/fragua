@@ -1,0 +1,878 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FRAGUA · Website Builder interno</title>
+
+<!-- ================================================================
+     SECCIÓN 1 · DEPENDENCIAS CDN (sin npm, sin bundlers)
+     - Tipografías: Unbounded (display) + Instrument Sans (UI) + JetBrains Mono (código)
+     - GrapesJS 0.21: CSS del editor
+================================================================ -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@500;700;900&family=Instrument+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/grapesjs@0.21.13/dist/css/grapes.min.css">
+
+<style>
+/* ================================================================
+   SECCIÓN 2 · UI — HOJA DE ESTILOS DEL CHASIS
+   2.1 Variables y fondo ambiental · 2.2 Compuerta de acceso (gate)
+   2.3 Chasis del builder · 2.4 Overrides GrapesJS
+   2.5 Modales, menú exportación y toasts
+================================================================ */
+
+/* ---------- 2.1 Variables ---------- */
+:root{
+  --bg:#0e1420; --panel:#141c2e; --panel2:#182238; --line:#26324b;
+  --ink:#dfe7f5; --dim:#8b98b8; --faint:#5b6a8a;
+  --coral:#ff6a55; --mint:#3ddc97; --amber:#ffb454; --sky:#5aa9ff; --red:#ff5470;
+  --disp:'Unbounded',sans-serif; --body:'Instrument Sans',sans-serif; --mono:'JetBrains Mono',monospace;
+}
+*{box-sizing:border-box; margin:0; padding:0}
+html,body{height:100%}
+body{
+  font-family:var(--body); color:var(--ink); overflow:hidden;
+  background:
+    radial-gradient(900px 500px at 12% -10%, rgba(255,106,85,.10), transparent 60%),
+    radial-gradient(800px 500px at 100% 110%, rgba(61,220,151,.08), transparent 55%),
+    var(--bg);
+}
+body::before{ /* rejilla técnica de fondo */
+  content:''; position:fixed; inset:0; pointer-events:none; opacity:.5;
+  background-image:
+    repeating-linear-gradient(0deg, rgba(139,152,184,.05) 0 1px, transparent 1px 48px),
+    repeating-linear-gradient(90deg, rgba(139,152,184,.05) 0 1px, transparent 1px 48px);
+}
+button{font-family:inherit; cursor:pointer}
+::-webkit-scrollbar{width:9px;height:9px}
+::-webkit-scrollbar-thumb{background:#26324b;border-radius:8px}
+::-webkit-scrollbar-track{background:transparent}
+
+/* ---------- 2.2 Compuerta de acceso ---------- */
+#gate{
+  position:fixed; inset:0; z-index:50; display:grid; grid-template-columns:minmax(0,1.25fr) minmax(360px,460px);
+  gap:48px; align-items:center; padding:6vh 7vw; transition:opacity .45s, transform .45s;
+}
+#gate.off{opacity:0; transform:scale(.985); pointer-events:none}
+.g-kicker{font:600 11px var(--mono); letter-spacing:.28em; color:var(--amber); text-transform:uppercase}
+.g-title{font:900 clamp(56px,9vw,118px)/0.95 var(--disp); letter-spacing:-.02em; margin:18px 0 22px}
+.g-title em{font-style:normal; color:var(--coral)}
+.g-lead{color:var(--dim); font-size:17px; line-height:1.65; max-width:52ch}
+.g-stack{display:flex; flex-wrap:wrap; gap:10px; margin-top:34px}
+.g-chip{font:600 11px var(--mono); letter-spacing:.08em; color:var(--ink);
+  border:1px solid var(--line); background:rgba(20,28,46,.7); padding:7px 12px; border-radius:6px}
+.g-chip b{color:var(--mint); font-weight:600}
+.g-meta{position:absolute; left:7vw; bottom:5vh; font:400 11px var(--mono); color:var(--faint); letter-spacing:.1em}
+.g-card{
+  background:linear-gradient(180deg,var(--panel2),var(--panel));
+  border:1px solid var(--line); border-radius:12px; padding:34px 30px;
+  box-shadow:0 30px 80px rgba(0,0,0,.5); animation:rise .5s ease both .1s;
+}
+@keyframes rise{from{opacity:0; transform:translateY(16px)} to{opacity:1; transform:none}}
+.g-card h2{font:700 15px var(--disp); letter-spacing:.14em; margin-bottom:6px}
+.g-card p{color:var(--dim); font-size:13.5px; line-height:1.6}
+.g-mail{font:600 12px var(--mono); color:var(--mint); background:rgba(61,220,151,.08);
+  border:1px dashed rgba(61,220,151,.4); border-radius:6px; padding:9px 12px; margin:18px 0; word-break:break-all}
+.btn-google{
+  width:100%; display:flex; align-items:center; justify-content:center; gap:10px;
+  background:#fff; color:#1a1a1a; border:0; border-radius:8px; padding:13px;
+  font-weight:700; font-size:14px; transition:transform .15s, box-shadow .15s;
+}
+.btn-google:hover{transform:translateY(-2px); box-shadow:0 10px 24px rgba(255,255,255,.12)}
+.btn-google:disabled{opacity:.45; cursor:not-allowed; transform:none; box-shadow:none}
+#gateAlert{margin-top:16px; font-size:13px; line-height:1.55; color:var(--red);
+  border-left:3px solid var(--red); background:rgba(255,84,112,.08); padding:10px 12px; border-radius:0 6px 6px 0}
+#gateAlert[hidden]{display:none}
+.g-dot{display:inline-block; width:8px; height:8px; border-radius:50%; background:var(--amber); margin-right:8px; animation:pulse 1.6s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+
+/* ---------- 2.3 Chasis del builder ---------- */
+#app{display:none; flex-direction:column; height:100vh}
+#app.on{display:flex; animation:rise .4s ease both}
+#topbar{
+  height:58px; flex:none; display:flex; align-items:center; gap:14px; padding:0 16px;
+  background:rgba(20,28,46,.92); border-bottom:1px solid var(--line); z-index:20;
+}
+.brand{display:flex; align-items:center; gap:10px}
+.brand svg{width:30px; height:30px}
+.brand-name{font:700 16px var(--disp); letter-spacing:.06em}
+.brand-tag{font:400 10px var(--mono); color:var(--faint); letter-spacing:.18em; text-transform:uppercase; margin-top:2px}
+.spacer{flex:1}
+.seg{display:flex; background:var(--bg); border:1px solid var(--line); border-radius:8px; overflow:hidden}
+.seg button{background:transparent; border:0; color:var(--dim); padding:7px 13px; font-size:12px; font-weight:600; display:flex; gap:6px; align-items:center; transition:.15s}
+.seg button:hover{color:var(--ink)}
+.seg button.on{background:var(--panel2); color:var(--coral)}
+.tbtn{
+  display:flex; align-items:center; gap:7px; background:var(--panel); color:var(--ink);
+  border:1px solid var(--line); border-radius:8px; padding:8px 13px; font-size:13px; font-weight:600;
+  transition:transform .15s, border-color .15s, background .15s;
+}
+.tbtn:hover{transform:translateY(-1px); border-color:var(--faint)}
+.tbtn:disabled{opacity:.35; pointer-events:none}
+.tbtn.icon{padding:8px 10px}
+.tbtn.primary{background:var(--coral); border-color:var(--coral); color:#1a0d0a}
+.tbtn.primary:hover{box-shadow:0 6px 18px rgba(255,106,85,.35)}
+.tbtn svg{width:15px; height:15px}
+.vr{width:1px; height:24px; background:var(--line)}
+#avatar{width:30px; height:30px; border-radius:50%; border:2px solid var(--mint); object-fit:cover}
+
+#workspace{flex:1; min-height:0; display:grid; grid-template-columns:266px 1fr 302px; transition:grid-template-columns .28s ease}
+body.is-preview #workspace{grid-template-columns:0 1fr 0}
+body.is-preview aside{opacity:0; pointer-events:none; border:0}
+aside{background:var(--panel); display:flex; flex-direction:column; min-height:0; transition:opacity .25s}
+#left{border-right:1px solid var(--line)} #right{border-left:1px solid var(--line)}
+.tabbar{display:flex; flex:none; border-bottom:1px solid var(--line)}
+.tabbar button{
+  flex:1; background:transparent; border:0; border-bottom:2px solid transparent;
+  color:var(--dim); font:600 11px var(--mono); letter-spacing:.16em; text-transform:uppercase;
+  padding:12px 0; transition:.15s;
+}
+.tabbar button:hover{color:var(--ink)}
+.tabbar button.on{color:var(--coral); border-bottom-color:var(--coral)}
+.tabpane{flex:1; overflow-y:auto; padding:12px}
+.tabpane[hidden]{display:none}
+
+#stage{position:relative; min-width:0; background:#0a0f1a}
+#gjs{position:absolute; inset:0}
+#gjs .gjs-frame-wrapper{inset:24px auto 24px 24px}
+.floatbar{
+  position:absolute; z-index:15; display:flex; gap:4px; padding:5px;
+  background:rgba(20,28,46,.94); border:1px solid var(--line); border-radius:9px;
+  box-shadow:0 8px 24px rgba(0,0,0,.4);
+}
+.floatbar button{background:transparent; border:0; color:var(--dim); border-radius:6px; padding:6px 9px; font-size:12px; display:flex; align-items:center; gap:5px; transition:.15s}
+.floatbar button:hover{color:var(--ink); background:var(--panel2)}
+.floatbar button.on{color:var(--coral)}
+#deviceBar{top:14px; left:50%; transform:translateX(-50%)}
+#zoomBar{bottom:16px; left:16px}
+#zoomTxt{font:600 11px var(--mono); color:var(--faint); align-self:center; padding:0 6px}
+
+#statusbar{
+  height:30px; flex:none; display:flex; align-items:center; gap:18px; padding:0 16px;
+  background:var(--panel); border-top:1px solid var(--line);
+  font:400 11px var(--mono); color:var(--faint); letter-spacing:.04em; transition:opacity .25s;
+}
+body.is-preview #statusbar{opacity:0}
+#saveStatus[data-state="mint"]{color:var(--mint)} #saveStatus[data-state="amber"]{color:var(--amber)}
+#saveStatus[data-state="sky"]{color:var(--sky)} #saveStatus[data-state="red"]{color:var(--red)}
+.dotlive{width:7px; height:7px; border-radius:50%; background:var(--mint); animation:pulse 2s infinite}
+
+/* ---------- 2.4 Overrides GrapesJS (tema FRAGUA) ---------- */
+.gjs-one-bg{background-color:transparent}
+.gjs-two-color{color:var(--ink)}
+.gjs-three-bg{background-color:#22304e; color:#fff}
+.gjs-four-color-h:hover{color:var(--coral)}
+.gjs-cv-canvas{background:#0a0f1a}
+.gjs-frame{border-radius:6px; box-shadow:0 20px 60px rgba(0,0,0,.55)}
+.gjs-block{background:var(--panel2); border:1px solid var(--line); border-radius:8px; color:var(--ink);
+  font-family:var(--body); font-size:12px; transition:.15s; width:47%; margin:1.5%}
+.gjs-block:hover{border-color:var(--coral); transform:translateY(-2px); box-shadow:0 6px 16px rgba(0,0,0,.35)}
+.gjs-block svg{stroke:var(--dim)}
+.gjs-block__media{color:var(--dim)}
+.gjs-block-category .gjs-title, .gjs-category-title, .gjs-sm-sector-title, .gjs-clm-tags .gjs-sm-sector-title{
+  background:var(--bg); border-bottom:1px solid var(--line); color:var(--ink);
+  font:600 11px var(--mono); letter-spacing:.12em; text-transform:uppercase; padding:10px 8px;
+}
+.gjs-blocks-c{display:flex; flex-wrap:wrap; padding:6px 2px}
+.gjs-field{background:#0d1424; border:1px solid var(--line); border-radius:6px; color:var(--ink); font-family:var(--body)}
+.gjs-field:focus-within, .gjs-field:focus{border-color:var(--sky)}
+.gjs-field input, .gjs-field select, .gjs-field textarea{color:var(--ink)}
+.gjs-sm-property .gjs-sm-label, .gjs-trt-trait__wrk-title, .gjs-layer-title{color:var(--ink); font-weight:500}
+.gjs-layer{background:transparent; border-bottom:1px solid rgba(38,50,75,.5)}
+.gjs-layer:hover{background:var(--panel2)}
+.gjs-layer.gjs-selected{background:#22304e}
+.gjs-clm-tag{background:var(--panel2); border:1px solid var(--line); color:var(--ink); border-radius:5px}
+.gjs-clm-tag .gjs-clm-tag-status{color:var(--mint)}
+#gjs-clm-new{color:var(--sky)}
+.gjs-sm-btn, .gjs-btn-prim{background:var(--coral); color:#1a0d0a; border-radius:6px; font-weight:700}
+.gjs-pn-panel{background:transparent}
+.gjs-sm-sector .gjs-sm-property .gjs-sm-clear{color:var(--dim)}
+.gjs-sm-composite .gjs-sm-property{background:var(--bg)}
+.gjs-md-dialog{background:var(--panel); border:1px solid var(--line); border-radius:10px; color:var(--ink)}
+.gjs-md-header{background:var(--panel2); border-bottom:1px solid var(--line)}
+
+/* ---------- 2.5 Modales, menú exportación y toasts ---------- */
+.overlay{position:fixed; inset:0; z-index:60; background:rgba(5,8,14,.72); backdrop-filter:blur(3px);
+  display:flex; align-items:center; justify-content:center; opacity:0; pointer-events:none; transition:opacity .2s}
+.overlay.open{opacity:1; pointer-events:auto}
+.modal{width:min(680px,92vw); background:linear-gradient(180deg,var(--panel2),var(--panel));
+  border:1px solid var(--line); border-radius:12px; box-shadow:0 40px 100px rgba(0,0,0,.6);
+  transform:translateY(14px) scale(.98); transition:transform .22s; display:flex; flex-direction:column}
+.overlay.open .modal{transform:none}
+.modal-h{display:flex; align-items:center; justify-content:space-between; padding:18px 22px; border-bottom:1px solid var(--line)}
+.modal-h h3{font:700 14px var(--disp); letter-spacing:.1em}
+.modal-h .x{background:none; border:0; color:var(--dim); font-size:20px; line-height:1}
+.modal-h .x:hover{color:var(--red)}
+.modal-b{padding:18px 22px}
+.modal-f{display:flex; justify-content:flex-end; gap:10px; padding:16px 22px; border-top:1px solid var(--line)}
+.hint{font-size:12.5px; color:var(--dim); line-height:1.6; margin-bottom:12px}
+.hint b{color:var(--amber); font-weight:600}
+textarea#injText{
+  width:100%; height:300px; resize:vertical; background:#0a0f1a; color:#c8f0dd;
+  border:1px solid var(--line); border-radius:8px; padding:14px; font:400 12.5px/1.6 var(--mono);
+}
+textarea#injText:focus{outline:none; border-color:var(--coral)}
+.radios{display:flex; gap:18px; margin-top:12px; font-size:13px; color:var(--dim)}
+.radios label{display:flex; gap:7px; align-items:center; cursor:pointer}
+.radios input{accent-color:var(--coral)}
+
+#exportMenu{
+  position:fixed; z-index:55; top:64px; right:16px; width:318px;
+  background:linear-gradient(180deg,var(--panel2),var(--panel)); border:1px solid var(--line);
+  border-radius:12px; box-shadow:0 24px 60px rgba(0,0,0,.55); padding:14px;
+  opacity:0; transform:translateY(-8px); pointer-events:none; transition:.18s;
+}
+#exportMenu.open{opacity:1; transform:none; pointer-events:auto}
+#exportMenu label.fld{display:block; font:600 10px var(--mono); letter-spacing:.14em; color:var(--dim); text-transform:uppercase; margin:8px 0 5px}
+#exportMenu input[type=text]{width:100%; background:#0d1424; border:1px solid var(--line); border-radius:6px; color:var(--ink); padding:8px 10px; font-size:13px}
+.chk{display:flex; gap:8px; align-items:center; font-size:12.5px; color:var(--dim); margin:10px 0 12px}
+.chk input{accent-color:var(--mint)}
+.exp-row{display:flex; align-items:center; gap:12px; width:100%; text-align:left;
+  background:var(--panel); border:1px solid var(--line); border-radius:9px; padding:11px 12px; margin-top:8px; transition:.15s}
+.exp-row:hover{transform:translateY(-1px); border-color:var(--faint)}
+.exp-row .ic{width:34px; height:34px; flex:none; display:flex; align-items:center; justify-content:center; border-radius:8px; color:#10151f}
+.exp-row .t{font-weight:700; font-size:13.5px} .exp-row .s{font-size:11.5px; color:var(--dim)}
+.exp-row svg{width:17px; height:17px}
+
+#toasts{position:fixed; right:18px; bottom:44px; z-index:90; display:flex; flex-direction:column; gap:10px}
+.toast{
+  min-width:260px; max-width:380px; background:var(--panel2); border:1px solid var(--line);
+  border-left:3px solid var(--sky); border-radius:8px; padding:12px 14px; font-size:13px; line-height:1.5;
+  box-shadow:0 14px 34px rgba(0,0,0,.5); opacity:0; transform:translateX(20px); transition:.25s;
+}
+.toast.show{opacity:1; transform:none}
+.toast.t-ok{border-left-color:var(--mint)} .toast.t-err{border-left-color:var(--red)}
+.toast.t-warn{border-left-color:var(--amber)}
+.toast a{color:var(--sky); font-weight:600; word-break:break-all}
+.spin{display:inline-block; width:14px; height:14px; border:2px solid rgba(255,255,255,.25); border-top-color:#fff; border-radius:50%; animation:rot .7s linear infinite}
+@keyframes rot{to{transform:rotate(360deg)}}
+</style>
+</head>
+
+<body>
+
+<!-- ================================================================
+     SECCIÓN 2 (HTML) · COMPUERTA DE ACCESO
+     Visible hasta que Firebase confirme el email autorizado.
+================================================================ -->
+<div id="gate">
+  <div>
+    <div class="g-kicker">⬢ Herramienta interna · Acceso restringido</div>
+    <h1 class="g-title">FRAGUA<em>.</em></h1>
+    <p class="g-lead">
+      Estación de edición visual para landings generadas por IA. Pega el código crudo,
+      hidrata el lienzo, refina cada nodo con el inspector de estilos y publica
+      en Cloudflare o exporta el monolito — todo desde un único archivo.
+    </p>
+    <div class="g-stack">
+      <span class="g-chip"><b>◆</b> GrapesJS 0.21</span>
+      <span class="g-chip"><b>◆</b> Tailwind en lienzo</span>
+      <span class="g-chip"><b>◆</b> Firebase 10 · Auth + Firestore</span>
+      <span class="g-chip"><b>◆</b> Cloudflare Pages API</span>
+      <span class="g-chip"><b>◆</b> JSZip</span>
+    </div>
+  </div>
+  <div class="g-card">
+    <h2>ACCESO</h2>
+    <p>Autenticación cerrada. Solo puede entrar la cuenta cuya dirección coincida exactamente con:</p>
+    <div class="g-mail" id="gateMail">—</div>
+    <button class="btn-google" id="btnGoogle">
+      <svg width="18" height="18" viewBox="0 0 48 48"><path fill="#FFC107" d="M43.6 20.1H42V20H24v8h11.3c-1.6 4.7-6.1 8-11.3 8-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.9 1.2 8 3l5.7-5.7C34 6.1 29.3 4 24 4 13 4 4 13 4 24s9 20 20 20 20-9 20-20c0-1.3-.1-2.6-.4-3.9z"/><path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.9 1.2 8 3l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-8l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.1H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C41.4 35.4 44 30.1 44 24c0-1.3-.1-2.6-.4-3.9z"/></svg>
+      Entrar con Google
+    </button>
+    <div id="gateAlert" hidden></div>
+  </div>
+  <div class="g-meta">v1.0 · single-file · cero npm · cero bundlers</div>
+</div>
+
+<!-- ================================================================
+     SECCIÓN 2 (HTML) · CHASIS DEL BUILDER
+================================================================ -->
+<div id="app">
+  <header id="topbar">
+    <div class="brand">
+      <svg viewBox="0 0 32 32"><rect x="2" y="2" width="28" height="28" rx="6" fill="#ff6a55"/><path d="M9 21V11h6v3h-3v1.5h2.5v3H12V21H9zm9 0v-10h6v3h-3v7h-3z" fill="#10151f"/></svg>
+      <div><div class="brand-name">FRAGUA</div><div class="brand-tag">builder interno</div></div>
+    </div>
+    <div class="spacer"></div>
+
+    <!-- Lienzo responsive: escritorio / tablet / móvil -->
+    <div class="seg" id="deviceBarTop">
+      <button data-device="Escritorio" class="on" title="Escritorio">🖥 Escritorio</button>
+      <button data-device="Tablet" title="Tablet">▯ Tablet</button>
+      <button data-device="Móvil" title="Móvil">▯ Móvil</button>
+    </div>
+    <div class="spacer"></div>
+
+    <button class="tbtn icon" id="btnUndo" title="Deshacer (Ctrl+Z)">↶</button>
+    <button class="tbtn icon" id="btnRedo" title="Rehacer (Ctrl+Y)">↷</button>
+    <span class="vr"></span>
+    <button class="tbtn" id="btnInject">⌘ Inyectar código</button>
+    <button class="tbtn icon" id="btnClear" title="Vaciar lienzo">🗑</button>
+    <button class="tbtn icon" id="btnPreview" title="Vista previa (oculta paneles)">👁</button>
+    <span class="vr"></span>
+    <button class="tbtn" id="btnSave">Guardar</button>
+    <button class="tbtn primary" id="btnExport">Exportar ▾</button>
+    <span class="vr"></span>
+    <button class="tbtn icon" id="btnLogout" title="Cerrar sesión">⎋</button>
+    <img id="avatar" alt="" hidden>
+  </header>
+
+  <div id="workspace">
+    <!-- Panel izquierdo: catálogo de bloques + explorador DOM -->
+    <aside id="left">
+      <div class="tabbar" id="tabbarL">
+        <button data-tab="blocks" class="on">Bloques</button>
+        <button data-tab="layers">Capas / DOM</button>
+      </div>
+      <div class="tabpane" data-pane="blocks" id="blocks"></div>
+      <div class="tabpane" data-pane="layers" id="layers" hidden></div>
+    </aside>
+
+    <!-- Lienzo central -->
+    <main id="stage">
+      <div id="gjs"></div>
+      <div class="floatbar" id="zoomBar">
+        <button id="btnZoomOut" title="Alejar">−</button>
+        <span id="zoomTxt">100%</span>
+        <button id="btnZoomIn" title="Acercar">+</button>
+        <button id="btnZoomFit" title="Restablecer">⤢</button>
+      </div>
+    </main>
+
+    <!-- Panel derecho: estilos + atributos -->
+    <aside id="right">
+      <div class="tabbar" id="tabbarR">
+        <button data-tab="styles" class="on">Estilos</button>
+        <button data-tab="traits">Ajustes</button>
+      </div>
+      <div class="tabpane" data-pane="styles">
+        <div id="selectors"></div>
+        <div id="styles"></div>
+      </div>
+      <div class="tabpane" data-pane="traits" id="traits" hidden></div>
+    </aside>
+  </div>
+
+  <footer id="statusbar">
+    <span class="dotlive"></span>
+    <span>proyecto: <b style="color:var(--ink)">workspace</b></span>
+    <span id="saveStatus" data-state="dim">— esperando</span>
+    <span id="nodeCount">0 nodos raíz</span>
+    <span style="margin-left:auto">⌘Z deshacer · ESC cierra diálogos</span>
+  </footer>
+</div>
+
+<!-- ================================================================
+     SECCIÓN 2 (HTML) · MODAL INYECTOR DE CÓDIGO
+================================================================ -->
+<div class="overlay" id="modalInject">
+  <div class="modal">
+    <div class="modal-h"><h3>⌘ INYECTOR DE CÓDIGO</h3><button class="x" data-close>×</button></div>
+    <div class="modal-b">
+      <p class="hint">
+        Pega el HTML generado por la IA (acepta <b>&lt;style&gt;</b> internos, &lt;head&gt;, &lt;body&gt;…).
+        El parser nativo de GrapesJS lo convertirá en nodos editables.<br>
+        <b>Nota:</b> los &lt;script&gt; externos se descartan por seguridad — Tailwind ya está activo dentro del lienzo.
+      </p>
+      <textarea id="injText" spellcheck="false" placeholder="<section class=&quot;bg-slate-900 text-white py-20&quot;>&#10;  <h1 class=&quot;text-5xl font-bold&quot;>Hola</h1>&#10;</section>"></textarea>
+      <div class="radios">
+        <label><input type="radio" name="injMode" value="replace" checked> Reemplazar todo el lienzo</label>
+        <label><input type="radio" name="injMode" value="append"> Añadir al final</label>
+      </div>
+    </div>
+    <div class="modal-f">
+      <button class="tbtn" data-close>Cancelar</button>
+      <button class="tbtn primary" id="btnHydrate">Hidratar lienzo →</button>
+    </div>
+  </div>
+</div>
+
+<!-- Menú de exportación / despliegue -->
+<div id="exportMenu">
+  <label class="fld" for="pageTitle">Título de la página exportada</label>
+  <input type="text" id="pageTitle" value="Landing generada con FRAGUA">
+  <label class="chk"><input type="checkbox" id="optTailwind" checked> Incluir Tailwind CDN en las exportaciones</label>
+
+  <button class="exp-row" id="expMono">
+    <span class="ic" style="background:var(--mint)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12m0 0l-4-4m4 4l4-4M4 21h16"/></svg></span>
+    <span><span class="t">landing.html monolito</span><br><span class="s">HTML + CSS inyectado en &lt;style&gt;</span></span>
+  </button>
+  <button class="exp-row" id="expZip">
+    <span class="ic" style="background:var(--sky)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7h16v13H4zM4 7l2-4h12l2 4M10 11h4M10 14h4"/></svg></span>
+    <span><span class="t">ZIP completo</span><br><span class="s">index.html listo para arrastrar a Netlify</span></span>
+  </button>
+  <button class="exp-row" id="expCF">
+    <span class="ic" style="background:var(--amber)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 15l-2 6 6-2M14 4c3 0 6 3 6 6-4 1-8 5-9 9-3-1-5-3-6-6 4-1 8-5 9-9zM15 9a1 1 0 100-2 1 1 0 000 2z"/></svg></span>
+    <span><span class="t">Publicar en Cloudflare Pages</span><br><span class="s">Direct Upload API → producción</span></span>
+  </button>
+</div>
+
+<div id="toasts"></div>
+
+<!-- ================================================================
+     SECCIÓN 1 (scripts) · CDNs JS
+     Orden: motor → plugins → locale → compresión → módulo de la app
+================================================================ -->
+<script src="https://unpkg.com/grapesjs@0.21.13/dist/grapes.min.js"></script>
+<script src="https://unpkg.com/grapesjs-blocks-basic@1.0.2/dist/index.js"></script>
+<script src="https://unpkg.com/grapesjs-plugin-forms@2.0.6/dist/index.js"></script>
+<script src="https://unpkg.com/grapesjs@0.21.13/dist/locale/es.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+
+<script type="module">
+/* ================================================================
+   SECCIÓN 3 · CONFIGURACIÓN — ★ REEMPLAZA ESTOS VALORES ★
+================================================================ */
+const ALLOWED_EMAIL = 'cepedademian2005';   // ★ Único email con acceso
+
+// ★ Copia este objeto desde: Consola Firebase → Configuración → Tus apps → SDK Web
+const firebaseConfig = {
+    apiKey: "AIzaSyC1j4KdiSa2ub6m4e1PlgftYpUTFUAfM8M",
+    authDomain: "fragua-b1463.firebaseapp.com",
+    projectId: "fragua-b1463",
+    storageBucket: "fragua-b1463.firebasestorage.app",
+    messagingSenderId: "342089851576",
+    appId: "1:342089851576:web:73594b4d98fbac4a8d4a4d"
+  };
+
+// ★ Cloudflare: Dash → resumen (Account ID) · My Profile → API Tokens (Pages: Edit)
+const CF_ACCOUNT_ID   = 'https://dash.cloudflare.com/c33eda728f04b2d75ed820d30ab14a6b/home';
+const CF_PROJECT_NAME = 'fraguapp';            // se crea solo si no existe
+const CF_API_TOKEN    = 'cfut_xC0t7eqErnaHzyqu9uQcTU5WQMfK7iqI3BEYYojV6d69134c';
+
+const FIREBASE_OK = !FIREBASE_CONFIG.apiKey.startsWith('PEGA_');
+
+/* ================================================================
+   SECCIÓN 4 · LÓGICA FIREBASE — Auth cerrada + Firestore
+================================================================ */
+import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
+import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged }
+  from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
+import { getFirestore, doc, getDoc, setDoc }
+  from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
+
+const $ = s => document.querySelector(s);
+const gate = $('#gate'), app = $('#app');
+$('#gateMail').textContent = ALLOWED_EMAIL;
+
+let auth = null, db = null, projectRef = null, user = null;
+
+if (FIREBASE_OK) {
+  const fb   = initializeApp(FIREBASE_CONFIG);
+  auth = getAuth(fb); db = getFirestore(fb);
+  projectRef = doc(db, 'fragua', 'workspace');   // documento único del proyecto
+
+  onAuthStateChanged(auth, u => {
+    if (!u) return showGate();                             // sin sesión → compuerta
+    if ((u.email || '').toLowerCase() !== ALLOWED_EMAIL.toLowerCase()) {
+      gateAlert(`Acceso denegado para «${u.email}». Esta instancia solo admite ${ALLOWED_EMAIL}.`);
+      signOut(auth);                                       // validación estricta en cliente
+      return;
+    }
+    enterApp(u);
+  });
+} else {
+  gateAlert('⚠ Configuración pendiente: pega tu firebaseConfig y tu email en la SECCIÓN 3 del código.');
+  $('#btnGoogle').disabled = true;
+}
+
+function showGate(){ gate.classList.remove('off'); app.classList.remove('on'); }
+function gateAlert(msg){ const a = $('#gateAlert'); a.hidden = false; a.textContent = msg; }
+
+$('#btnGoogle').onclick = async () => {
+  try {
+    await signInWithPopup(auth, new GoogleAuthProvider());
+  } catch (e) {
+    gateAlert('No se pudo abrir la ventana de Google. Motivo habitual: estás abriendo el archivo con file:// — sírvelo por HTTP (ver instrucciones).');
+  }
+};
+$('#btnLogout').onclick = () => signOut(auth);
+
+/* ================================================================
+   SECCIÓN 5 · INICIALIZACIÓN DE GRAPESJS
+================================================================ */
+let ed = null, saveTimer = null;
+
+function enterApp(u){
+  user = u;
+  const av = $('#avatar');
+  if (u.photoURL) { av.src = u.photoURL; av.hidden = false; }
+  gate.classList.add('off');
+  app.classList.add('on');
+  if (!ed) { initEditor(); loadProject(); }
+}
+
+function initEditor(){
+  ed = grapesjs.init({
+    container: '#gjs',
+    height: '100%', width: 'auto',
+    fromElement: false,
+    storageManager: false,                 // la persistencia la maneja Firestore
+    i18n: { locale: 'es' },
+    panels: { defaults: [] },              // el chrome lo controlamos nosotros
+    plugins: [window.grapesjsBlocksBasic, window.grapesjsPluginForms].filter(Boolean),
+
+    /* Lienzo responsive */
+    deviceManager: { devices: [
+      { name: 'Escritorio', width: '' },
+      { name: 'Tablet',  width: '768px', widthMedia: '992px' },
+      { name: 'Móvil',   width: '375px', widthMedia: '480px' },
+    ]},
+
+    /* ★ Tailwind dentro del iframe del editor: las clases utilitarias
+       que inyecte la IA se generan en tiempo real en el lienzo. */
+    canvas: {
+      scripts: ['https://cdn.tailwindcss.com'],
+      styles:  ['https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&family=Playfair+Display:wght@700&display=swap'],
+    },
+
+    /* Catálogo de bloques (plugins + bloques propios con Tailwind) */
+    blockManager: {
+      appendTo: '#blocks',
+      blocks: [
+        { id:'sec', category:'FRAGUA', label:'Sección',
+          content:'<section class="px-6 py-16"><div class="max-w-5xl mx-auto"><h2 class="text-3xl font-bold">Título de sección</h2><p class="mt-3 opacity-70">Texto de apoyo editable.</p></div></section>' },
+        { id:'box', category:'FRAGUA', label:'Contenedor',
+          content:'<div class="max-w-5xl mx-auto px-4"></div>' },
+      ],
+    },
+
+    selectorManager: { appendTo: '#selectors' },
+    layerManager:    { appendTo: '#layers' },
+    traitManager:    { appendTo: '#traits' },
+
+    /* Gestor de estilos avanzado: flexbox, grid, tipografía, fondos… */
+    styleManager: {
+      appendTo: '#styles',
+      sectors: [
+        { name:'Diseño', open:true,
+          properties:[
+            { property:'display', defaults:'block', list:[{value:'block'},{value:'flex'},{value:'grid'},{value:'inline-block'},{value:'none'}] },
+            { property:'position', list:[{value:'static'},{value:'relative'},{value:'absolute'},{value:'fixed'},{value:'sticky'}] },
+            'top','right','bottom','left','z-index','overflow',
+          ]},
+        { name:'Flexbox',
+          properties:[
+            { property:'flex-direction', list:[{value:'row'},{value:'column'},{value:'row-reverse'},{value:'column-reverse'}] },
+            { property:'justify-content', list:[{value:'flex-start'},{value:'center'},{value:'flex-end'},{value:'space-between'},{value:'space-around'},{value:'space-evenly'}] },
+            { property:'align-items', list:[{value:'stretch'},{value:'flex-start'},{value:'center'},{value:'flex-end'},{value:'baseline'}] },
+            { property:'flex-wrap', list:[{value:'nowrap'},{value:'wrap'},{value:'wrap-reverse'}] },
+            'order','flex-grow','flex-shrink','flex-basis','gap',
+          ]},
+        { name:'Grid',
+          properties:[ 'grid-template-columns','grid-template-rows','grid-column','grid-row','place-items','gap' ]},
+        { name:'Dimensiones', buildProps:['width','height','min-width','min-height','max-width','max-height'] },
+        { name:'Espaciado',  buildProps:['margin','padding'] },
+        { name:'Tipografía',
+          buildProps:['font-size','font-weight','letter-spacing','color','line-height','text-align','text-decoration','text-shadow'],
+          properties:[
+            { property:'font-family', defaults:'Inter', list:[
+              {value:'Inter'}, {value:'"Playfair Display", serif'}, {value:'Georgia, serif'},
+              {value:'Arial, Helvetica, sans-serif'}, {value:'"Courier New", monospace'}, {value:'system-ui, sans-serif'} ]},
+          ]},
+        { name:'Fondo', buildProps:['background-color','background-image','background-repeat','background-position','background-size','background'] },
+        { name:'Decoración', buildProps:['border-radius','border','box-shadow','opacity'] },
+        { name:'Movimiento', properties:[ {property:'transition'},{property:'transform'},{property:'cursor'},{property:'filter'} ] },
+      ],
+    },
+  });
+
+  /* ---- Autosave: cada cambio → Firestore (debounce 1.4 s) ---- */
+  ed.on('update', scheduleSave);
+  ed.on('component:add component:remove component:clone', updateCount);
+  refreshHistory();
+}
+
+/* ================================================================
+   SECCIÓN 6 · PERSISTENCIA (Firestore + caché local de emergencia)
+================================================================ */
+async function loadProject(){
+  setStatus('loading');
+  try {
+    const snap = await getDoc(projectRef);
+    if (snap.exists() && snap.data().project) {
+      ed.loadProjectData(snap.data().project);
+      toast('Proyecto restaurado desde Firestore ✓','ok');
+    } else {
+      const cache = localStorage.getItem('fragua-cache');
+      if (cache) { ed.loadProjectData(JSON.parse(cache)); toast('Restaurado desde caché local','ok'); }
+      else seedStarter();
+    }
+  } catch (e) {
+    console.error(e);
+    const cache = localStorage.getItem('fragua-cache');
+    if (cache) { ed.loadProjectData(JSON.parse(cache)); toast('Firestore inaccesible → caché local','warn'); }
+    else { seedStarter(); toast('No se pudo leer Firestore. Se crea un lienzo de ejemplo.','warn'); }
+  }
+  updateCount(); setStatus('saved');
+}
+
+function seedStarter(){
+  ed.setComponents(`
+  <section class="bg-slate-950 text-white">
+    <div class="max-w-5xl mx-auto px-6 py-24">
+      <p class="text-amber-400 uppercase tracking-widest text-sm font-semibold">Lanzamiento</p>
+      <h1 class="text-5xl font-extrabold leading-tight mt-3">Construye, edita y publica sin fricción</h1>
+      <p class="text-slate-300 mt-4 max-w-xl text-lg">Lienzo inicial de FRAGUA. Selecciona cualquier elemento y modifícalo desde el panel de estilos.</p>
+      <div class="mt-8 flex gap-3">
+        <a href="#" class="bg-amber-400 text-slate-950 font-bold px-6 py-3 rounded-md">Empezar</a>
+        <a href="#" class="border border-slate-600 px-6 py-3 rounded-md">Ver demo</a>
+      </div>
+    </div>
+  </section>
+  <section class="bg-white">
+    <div class="max-w-5xl mx-auto px-6 py-16 grid md:grid-cols-3 gap-8">
+      <div class="border border-slate-200 rounded-lg p-6"><h3 class="font-bold text-lg">Hidrata</h3><p class="text-slate-500 mt-2 text-sm">Pega el HTML de la IA y edítalo visualmente.</p></div>
+      <div class="border border-slate-200 rounded-lg p-6"><h3 class="font-bold text-lg">Refina</h3><p class="text-slate-500 mt-2 text-sm">Flexbox, grid, tipografía y fondos sin tocar código.</p></div>
+      <div class="border border-slate-200 rounded-lg p-6"><h3 class="font-bold text-lg">Publica</h3><p class="text-slate-500 mt-2 text-sm">Cloudflare Pages, monolito o ZIP en un clic.</p></div>
+    </div>
+  </section>`);
+}
+
+function scheduleSave(){
+  setStatus('dirty');
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(persist, 1400);
+}
+async function persist(){
+  if (!projectRef) return;
+  setStatus('saving');
+  try {
+    // JSON round-trip: elimina `undefined`, que Firestore rechaza
+    const data = JSON.parse(JSON.stringify(ed.getProjectData()));
+    await setDoc(projectRef, { project: data, updatedAt: new Date().toISOString() });
+    localStorage.setItem('fragua-cache', JSON.stringify(data));
+    setStatus('saved');
+  } catch (e) {
+    console.error('Error guardando:', e);
+    localStorage.setItem('fragua-cache', JSON.stringify(ed.getProjectData()));
+    setStatus('error');
+  }
+}
+window.addEventListener('beforeunload', () => {           // paracaídas si cierras la pestaña
+  if (ed) localStorage.setItem('fragua-cache', JSON.stringify(ed.getProjectData()));
+});
+$('#btnSave').onclick = persist;
+
+/* ================================================================
+   SECCIÓN 7 · INYECTOR DE CÓDIGO (HTML crudo → nodos editables)
+================================================================ */
+$('#btnInject').onclick = () => $('#modalInject').classList.add('open');
+document.querySelectorAll('[data-close]').forEach(b =>
+  b.onclick = () => b.closest('.overlay').classList.remove('open'));
+window.addEventListener('keydown', e => { if (e.key === 'Escape') closeAll(); });
+
+$('#btnHydrate').onclick = () => {
+  const raw = $('#injText').value.trim();
+  if (!raw) return toast('Pega primero algo de HTML','warn');
+  hydrate(raw, document.querySelector('input[name=injMode]:checked').value === 'replace');
+  $('#modalInject').classList.remove('open');
+  toast('Código hidratado en el lienzo ✓','ok');
+};
+
+/** Convierte HTML crudo en componentes GrapesJS, rescatando los <style>. */
+function hydrate(raw, replace){
+  const css = [];
+  let html = raw.replace(/<style[^>]*>([\s\S]*?)<\/style>/gi, (_, c) => { css.push(c); return ''; });
+  const body = html.match(/<body[^>]*>([\s\S]*)<\/body>/i);
+  if (body) html = body[1];
+  html = html.replace(/<!doctype[^>]*>|<\/?html[^>]*>|<head[\s\S]*?<\/head>/gi, '');
+  if (replace) ed.setComponents(html); else ed.addComponents(html);
+  css.forEach(c => ed.addCss(c));
+  updateCount();
+}
+
+/* ================================================================
+   SECCIÓN 8 · EXPORTACIÓN Y DESPLIEGUE
+================================================================ */
+/** Documento final: HTML del lienzo + CSS del editor en <style>. */
+function buildFullHtml(){
+  const html = ed.getHtml(), css = ed.getCss();
+  const tw = $('#optTailwind').checked ? `  <script src="https://cdn.tailwindcss.com"><\/script>\n` : '';
+  const title = $('#pageTitle').value || 'Sitio FRAGUA';
+  return `<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>${title}</title>
+${tw}  <style>
+${css}
+  </style>
+</head>
+<body>
+${html}
+</body>
+</html>`;
+}
+function download(name, blob){
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = name; a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+}
+
+/* --- 8.1 Monolito: landing.html con todo el CSS inyectado --- */
+$('#expMono').onclick = () => {
+  download('landing.html', new Blob([buildFullHtml()], { type:'text/html' }));
+  toast('landing.html descargado ✓','ok');
+};
+
+/* --- 8.2 ZIP completo para arrastrar a Netlify --- */
+$('#expZip').onclick = async () => {
+  const zip = new JSZip();
+  zip.file('index.html', buildFullHtml());
+  zip.file('README.txt', 'Exportado desde FRAGUA · ' + new Date().toLocaleString());
+  download('fragua-site.zip', await zip.generateAsync({ type:'blob' }));
+  toast('ZIP generado: arrástralo a Netlify Drop ✓','ok');
+};
+
+/* --- 8.3 Deploy a Cloudflare Pages (Direct Upload API v2) ---
+   Flujo: 1) abrir sesión de subida → 2) subir el blob → 3) crear deployment. */
+const cfApi = async (path, opts = {}) => {
+  const res = await fetch('https://api.cloudflare.com/client/v4' + path, {
+    ...opts,
+    headers: { Authorization: `Bearer ${CF_API_TOKEN}`, 'Content-Type': 'application/json', ...(opts.headers || {}) },
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok || json.success === false) throw new Error(json?.errors?.[0]?.message || `HTTP ${res.status}`);
+  return json;
+};
+
+async function ensureProject(){
+  try {
+    await cfApi(`/accounts/${CF_ACCOUNT_ID}/pages/projects`, {
+      method:'POST', body: JSON.stringify({ name: CF_PROJECT_NAME, production_branch:'main' }),
+    });
+    toast(`Proyecto «${CF_PROJECT_NAME}» creado en Cloudflare`,'ok');
+  } catch (e) { /* si ya existe, seguimos */ }
+}
+
+async function deployCloudflare(btn){
+  if (CF_API_TOKEN.startsWith('PEGA_')) return toast('Falta configurar CF_API_TOKEN / CF_ACCOUNT_ID','err');
+  btn.disabled = true; const prev = btn.querySelector('.t').textContent;
+  btn.querySelector('.t').innerHTML = '<span class="spin"></span> Publicando…';
+  try {
+    const content = buildFullHtml();
+    // 1) sesión de subida
+    const sess = await cfApi(`/accounts/${CF_ACCOUNT_ID}/pages/uploads`, { method:'POST' });
+    const { id: uploadId, jwt } = sess.result;
+    // 2) subir el archivo
+    const fd = new FormData();
+    fd.append('index.html', new Blob([content], { type:'text/html' }), 'index.html');
+    const up = await fetch(`https://upload.pages.cloudflare.com/${uploadId}/`, {
+      method:'POST', headers: { Authorization: `Bearer ${jwt}` }, body: fd,
+    });
+    if (!up.ok) throw new Error('Subida de archivo: HTTP ' + up.status);
+    let hash = (await up.text()).trim();
+    try { const j = JSON.parse(hash); hash = j.result?.hash || j.hash || j.result || hash; } catch {}
+    // 3) crear el deployment de producción
+    let dep;
+    try {
+      dep = await cfApi(`/accounts/${CF_ACCOUNT_ID}/pages/projects/${CF_PROJECT_NAME}/deployments`, {
+        method:'POST', body: JSON.stringify({ manifest: { 'index.html': hash } }),
+      });
+    } catch (e) {
+      if (/not found|no existe/i.test(e.message)) { await ensureProject();
+        dep = await cfApi(`/accounts/${CF_ACCOUNT_ID}/pages/projects/${CF_PROJECT_NAME}/deployments`, {
+          method:'POST', body: JSON.stringify({ manifest: { 'index.html': hash } }),
+        });
+      } else throw e;
+    }
+    const url = dep.result.url || `https://${CF_PROJECT_NAME}.pages.dev`;
+    toast('🚀 Publicado en producción','ok', url);
+  } catch (e) {
+    console.error(e);
+    toast('Deploy fallido: ' + e.message,'err');
+  } finally {
+    btn.disabled = false; btn.querySelector('.t').textContent = prev;
+  }
+}
+$('#expCF').onclick = e => deployCloudflare(e.currentTarget);
+
+/* ================================================================
+   SECCIÓN 9 · CABLEADO DE LA INTERFAZ
+================================================================ */
+/* Menú exportar */
+$('#btnExport').onclick = e => { e.stopPropagation(); $('#exportMenu').classList.toggle('open'); };
+document.addEventListener('click', e => {
+  if (!e.target.closest('#exportMenu')) $('#exportMenu').classList.remove('open');
+});
+
+/* Pestañas izquierda / derecha */
+function bindTabs(bar){
+  bar.querySelectorAll('button').forEach(b => b.onclick = () => {
+    bar.querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b));
+    const side = bar.parentElement;
+    side.querySelectorAll('.tabpane').forEach(p => p.hidden = p.dataset.pane !== b.dataset.tab);
+  });
+}
+bindTabs($('#tabbarL')); bindTabs($('#tabbarR'));
+
+/* Dispositivos */
+document.querySelectorAll('#deviceBarTop button').forEach(b => b.onclick = () => {
+  document.querySelectorAll('#deviceBarTop button').forEach(x => x.classList.toggle('on', x === b));
+  ed.setDevice(b.dataset.device);
+});
+
+/* Zoom */
+const zoomTxt = $('#zoomTxt');
+const setZoom = f => { ed.Canvas.setZoom(f(ed.Canvas.getZoom())); zoomTxt.textContent = Math.round(ed.Canvas.getZoom()*100)+'%'; };
+$('#btnZoomIn').onclick  = () => setZoom(z => z + .1);
+$('#btnZoomOut').onclick = () => setZoom(z => Math.max(.2, z - .1));
+$('#btnZoomFit').onclick = () => { ed.Canvas.setZoom(1); zoomTxt.textContent = '100%'; };
+
+/* Historial deshacer/rehacer */
+function refreshHistory(){
+  $('#btnUndo').disabled = !ed.UndoManager.hasUndo();
+  $('#btnRedo').disabled = !ed.UndoManager.hasRedo();
+}
+ed && null; // (ed aún no existe aquí; se engancha tras init)
+window.addEventListener('hashchange', () => {});
+document.addEventListener('DOMContentLoaded', () => {});
+
+/* Nota: los listeners de historial se conectan dentro de initEditor() vía 'update'. */
+$('#btnUndo').onclick = () => ed.runCommand('core:undo');
+$('#btnRedo').onclick = () => ed.runCommand('core:redo');
+const _origRefresh = refreshHistory;
+// re-enganchamos tras cada update:
+const __hook = () => ed && ed.on('update', _origRefresh);
+
+/* Limpiar lienzo */
+$('#btnClear').onclick = () => {
+  if (!confirm('¿Vaciar todo el lienzo y sus estilos?')) return;
+  ed.Components.clear(); ed.Css.clear(); updateCount();
+};
+
+/* Vista previa (oculta paneles, el lienzo sigue vivo) */
+$('#btnPreview').onclick = () => document.body.classList.toggle('is-preview');
+
+/* Contador de nodos + estado de guardado */
+function updateCount(){ if (ed) $('#nodeCount').textContent = ed.getComponents().length + ' nodos raíz'; }
+const SAVE_STATES = {
+  loading:['↻','cargando proyecto…','dim'], dirty:['●','cambios sin guardar','amber'],
+  saving:['↻','guardando en Firestore…','sky'], saved:['✓','todo guardado','mint'], error:['✕','error al guardar','red'],
+};
+function setStatus(k){
+  const [ic, txt, cls] = SAVE_STATES[k], el = $('#saveStatus');
+  el.textContent = ic + ' ' + txt; el.dataset.state = cls;
+}
+
+/* Toasts */
+function toast(msg, type = 'info', link = null){
+  const t = document.createElement('div');
+  t.className = 'toast t-' + (type === 'ok' ? 'ok' : type === 'err' ? 'err' : type === 'warn' ? 'warn' : 'info');
+  t.innerHTML = `<span>${msg}</span>` + (link ? ` <a href="${link}" target="_blank" rel="noopener">${link} ↗</a>` : '');
+  $('#toasts').appendChild(t);
+  requestAnimationFrame(() => t.classList.add('show'));
+  setTimeout(() => { t.classList.remove('show'); setTimeout(() => t.remove(), 260); }, 5200);
+}
+function closeAll(){
+  document.querySelectorAll('.overlay.open').forEach(o => o.classList.remove('open'));
+  $('#exportMenu').classList.remove('open');
+}
+</script>
+</body>
+</html>
